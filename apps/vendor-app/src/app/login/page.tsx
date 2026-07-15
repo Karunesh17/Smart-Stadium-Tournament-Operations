@@ -105,7 +105,7 @@ export default function LoginPage() {
                 id="password"
                 type="password"
                 className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded-sm py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-accent-primary transition-colors"
-                placeholder="••••••••"
+                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isLoading}
