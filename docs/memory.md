@@ -7,7 +7,7 @@ the implementing agent's self-report alone.
 
 ## Environment State
 - Last verified: 2026-07-15T11:15:00+05:30
-- `git log -1 --oneline`: ce4f9ef docs(auth): update memory.md with verified Phase 2 status
+- `git log -1 --oneline`: 7a42c9f feat(auth): make refresh token secure cookie configuration environment-dependent
 - `docker-compose up` status: broken (Docker/docker-compose command is not installed on this host environment)
 - Branch: feature/phase2-auth
 
@@ -15,7 +15,7 @@ the implementing agent's self-report alone.
 | Phase | Status | Verified By | Evidence |
 |---|---|---|---|
 | 1 - Setup | done | ran `pytest` on gateway health check | 1 passed, commit e702993 |
-| 2 - Auth | done | ran `pytest` and live HTTP uvicorn server script | 9 passed (8 auth, 1 health). Live test run output: Register (201), Login (200), Profile (200), Gating Vendor (403 Forbidden), Gating Admin (200 Access verified), Refresh Token (200 OK), Logout (200), commit ce4f9ef |
+| 2 - Auth | done | ran `pytest` and live HTTP uvicorn server script | 9 passed (8 auth, 1 health). Live test run output: Register (201), Login (200), Profile (200), Gating Vendor (403 Forbidden), Gating Admin (200 Access verified), Refresh Token (200 OK), Logout (200), commit 7a42c9f |
 | 3 - Vendor | not started | — | — |
 | 4-11 | not started | — | — |
 
