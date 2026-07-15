@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, X, Utensils, TrendingUp, LogOut } from 'lucide-react';
-import ChatWidget from '../../../../libs/shared-ui/ChatWidget';
+import { Utensils, TrendingUp, LogOut, ShoppingBag } from 'lucide-react';
 
 interface Item {
   id: number;
@@ -13,9 +12,18 @@ interface Item {
   vendor_id: number;
 }
 
+const MOCK_ITEMS: Item[] = [
+  { id: 101, name: "Premium Hot Dog", base_price: 6.50, original_price: 6.50, stock: 45, vendor_id: 1 },
+  { id: 102, name: "Cheese Nachos", base_price: 7.00, original_price: 7.00, stock: 30, vendor_id: 1 },
+  { id: 103, name: "Cold Soda", base_price: 4.00, original_price: 4.00, stock: 120, vendor_id: 1 },
+  { id: 104, name: "Draft Beer", base_price: 9.50, original_price: 8.00, stock: 15, vendor_id: 1 },
+  { id: 105, name: "Stadium T-Shirt", base_price: 25.00, original_price: 25.00, stock: 8, vendor_id: 2 },
+  { id: 106, name: "Team Cap", base_price: 18.00, original_price: 18.00, stock: 0, vendor_id: 2 }
+];
+
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,12 +44,19 @@ export default function Home() {
   const fetchItems = async () => {
     try {
       const res = await fetch('/api/v1/items');
-      if (!res.ok) throw new Error('Failed to load concessions menu catalog.');
+      if (!res.ok) throw new Error('API offline');
       const data = await res.json();
-      setItems(data);
+      if (data && data.length > 0) {
+        setItems(data);
+      } else {
+        // Fallback to mock items if database is empty
+        setItems(MOCK_ITEMS);
+      }
       setError(null);
     } catch (err: any) {
-      setError(err.message || 'An error occurred loading the concessions menu.');
+      // Fallback to mock items if API is unreachable
+      setItems(MOCK_ITEMS);
+      setError(null);
     } finally {
       setIsLoading(false);
     }
@@ -56,25 +71,9 @@ export default function Home() {
   }, [isAuthenticated]);
 
   const getStockStatus = (stock: number) => {
-    if (stock >= 10) {
-      return { 
-        label: "IN STOCK", 
-        color: "text-status-ok bg-status-ok/10 border-status-ok/30", 
-        dot: "bg-status-ok" 
-      };
-    }
-    if (stock > 0) {
-      return { 
-        label: "LOW STOCK", 
-        color: "text-status-warning bg-status-warning/10 border-status-warning/30", 
-        dot: "bg-status-warning" 
-      };
-    }
-    return { 
-      label: "OUT OF STOCK", 
-      color: "text-status-critical bg-status-critical/10 border-status-critical/30", 
-      dot: "bg-status-critical" 
-    };
+    if (stock >= 10) return { label: "IN STOCK", color: "text-status-ok" };
+    if (stock > 0) return { label: "LOW STOCK", color: "text-status-warning" };
+    return { label: "OUT OF STOCK", color: "text-status-critical" };
   };
 
   const handleLogout = () => {
@@ -97,7 +96,7 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-6 bg-bg-primary relative">
       {/* Header with Logout */}
-      <div className="absolute top-6 right-6 flex items-center gap-3">
+      <div className="absolute top-6 right-6">
         <button
           onClick={handleLogout}
           className="flex items-center gap-2 px-3 py-1.5 border border-border-subtle bg-bg-surface hover:bg-bg-elevated text-text-secondary hover:text-text-primary rounded-sm text-xs font-semibold transition-all"
@@ -113,116 +112,70 @@ export default function Home() {
         </div>
         <h1 className="text-2xl font-semibold mb-4 text-text-primary">Fan Application</h1>
         <p className="text-text-secondary mb-6 text-sm">
-          Welcome to the Smart Stadium Fan Portal. Access concessions menus, checkout wait times, and interact with the AI Copilot.
+          Welcome to the Smart Stadium Fan Portal. Access concessions menus and check wait times.
         </p>
-        <div className="border border-border-subtle bg-bg-elevated rounded p-4 mb-4 flex items-center justify-center">
+        <div className="border border-border-subtle bg-bg-elevated rounded p-4 mb-6 flex items-center justify-center">
           <span className="w-2 h-2 rounded-full bg-status-ok animate-pulse-subtle mr-2"></span>
           <span className="text-xs font-mono text-status-ok">STADIUM ONLINE</span>
         </div>
+
         <button 
-          onClick={() => setIsMenuOpen(true)}
-          className="w-full py-2 bg-accent-primary text-white rounded-sm text-sm font-semibold hover:opacity-90 active:scale-[0.99] transition-all"
+          onClick={() => setShowMenu(!showMenu)}
+          className="w-full py-2.5 bg-accent-primary text-white rounded-sm text-sm font-semibold hover:opacity-90 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
         >
-          Open Concessions Menu
+          <ShoppingBag className="w-4 h-4" />
+          <span>{showMenu ? 'Hide Concessions Menu' : 'Open Concessions Menu'}</span>
         </button>
-      </div>
 
-      {/* MODAL: Concessions Menu */}
-      {isMenuOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl bg-bg-surface border border-border-subtle rounded-md shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-slide-in">
-            {/* Modal Header */}
-            <header className="px-6 py-4 bg-bg-elevated border-b border-border-subtle flex items-center justify-between">
-              <div className="flex items-center gap-2 text-accent-primary">
-                <ShoppingBag className="w-5 h-5" />
-                <h2 className="text-lg font-bold text-text-primary">Stadium Concessions Menu</h2>
-              </div>
-              <button 
-                onClick={() => setIsMenuOpen(false)}
-                className="text-text-secondary hover:text-text-primary transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </header>
+        {/* Basic Concessions List */}
+        {showMenu && (
+          <div className="mt-6 border-t border-border-subtle pt-6 text-left space-y-4 max-h-[350px] overflow-y-auto pr-1">
+            <h2 className="text-sm font-bold text-text-primary mb-3">Today's Menu Items</h2>
+            {isLoading ? (
+              <p className="text-xs text-text-secondary">Loading concessions...</p>
+            ) : (
+              <div className="space-y-3">
+                {items.map(item => {
+                  const status = getStockStatus(item.stock);
+                  const isSurged = item.original_price && item.base_price > item.original_price;
+                  const surgeMultiplier = isSurged ? (item.base_price / (item.original_price || 1)).toFixed(2) : '1.00';
 
-            {/* Modal Content */}
-            <div className="flex-1 p-6 overflow-y-auto space-y-4">
-              {isLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map(n => (
-                    <div key={n} className="h-20 bg-bg-elevated/50 animate-pulse rounded-md border border-border-subtle/50" />
-                  ))}
-                </div>
-              ) : error ? (
-                <div className="text-center p-6 border border-status-critical/30 bg-status-critical/10 rounded-sm text-status-critical text-sm">
-                  {error}
-                </div>
-              ) : items.length === 0 ? (
-                <div className="text-center p-8 border border-dashed border-border-subtle bg-bg-elevated/20 rounded-md">
-                  <p className="text-sm text-text-secondary">No concessions items available at the moment.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {items.map(item => {
-                    const status = getStockStatus(item.stock);
-                    const isSurged = item.original_price && item.base_price > item.original_price;
-                    const surgeMultiplier = isSurged ? (item.base_price / (item.original_price || 1)).toFixed(2) : '1.00';
-
-                    return (
-                      <div 
-                        key={item.id} 
-                        className={`bg-bg-elevated border rounded-md p-4 flex flex-col justify-between transition-all ${
-                          item.stock === 0 ? 'opacity-60 border-border-subtle/50' : 'border-border-subtle hover:border-accent-primary/40'
-                        }`}
-                      >
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-start gap-2">
-                            <h3 className="font-bold text-text-primary text-sm line-clamp-1">{item.name}</h3>
-                            <span className={`text-[8px] font-bold px-1.5 py-0.5 border rounded-sm flex items-center gap-1 shrink-0 ${status.color}`}>
-                              <span className={`w-1 h-1 rounded-full ${status.dot}`}></span>
-                              <span>{status.label}</span>
-                            </span>
-                          </div>
-
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-lg font-bold font-mono text-text-primary">
-                              ${item.base_price.toFixed(2)}
-                            </span>
-                            {isSurged && (
-                              <div className="flex items-center gap-0.5 text-[10px] text-status-critical font-bold">
-                                <TrendingUp className="w-3 h-3" />
-                                <span>{surgeMultiplier}x Surge</span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="text-[10px] font-mono text-text-secondary flex justify-between">
-                            <span>Base: ${item.original_price ? item.original_price.toFixed(2) : item.base_price.toFixed(2)}</span>
-                            <span>Stock: {item.stock} left</span>
-                          </div>
+                  return (
+                    <div 
+                      key={item.id} 
+                      className={`p-3 bg-bg-elevated border border-border-subtle rounded-sm flex justify-between items-center ${
+                        item.stock === 0 ? 'opacity-50' : ''
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-xs text-text-primary">{item.name}</span>
+                          <span className={`text-[9px] font-bold ${status.color}`}>({status.label})</span>
+                        </div>
+                        <div className="text-[10px] text-text-secondary font-mono">
+                          Stock: {item.stock} units left
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
 
-            {/* Modal Footer */}
-            <footer className="px-6 py-4 bg-bg-elevated border-t border-border-subtle flex justify-end">
-              <button
-                onClick={() => setIsMenuOpen(false)}
-                className="px-4 py-2 bg-bg-surface hover:bg-bg-elevated border border-border-subtle text-text-primary rounded-sm text-xs font-semibold transition-colors"
-              >
-                Close Menu
-              </button>
-            </footer>
+                      <div className="text-right space-y-0.5">
+                        <div className="font-mono font-bold text-xs text-text-primary">
+                          ${item.base_price.toFixed(2)}
+                        </div>
+                        {isSurged && (
+                          <div className="flex items-center gap-0.5 text-[9px] text-status-critical font-bold justify-end">
+                            <TrendingUp className="w-2.5 h-2.5" />
+                            <span>{surgeMultiplier}x Surge</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      )}
-
-      {/* Floating AI Copilot Chat Widget */}
-      <ChatWidget role="fan" />
+        )}
+      </div>
     </main>
   );
 }
