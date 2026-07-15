@@ -12,11 +12,13 @@ from services.auth.router import router as auth_router
 from services.vendor.router import router as vendor_router
 from services.inventory.router import router as inventory_router
 from services.crowd.router import router as crowd_router
+from services.staff.router import router as staff_router
 from services.auth.security import get_current_user, RoleChecker
 from libs.shared_schemas.auth import UserResponse
 
 # Create database tables at startup for local SQLite development and testing
 Base.metadata.create_all(bind=engine)
+
 
 
 
@@ -107,6 +109,8 @@ app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(vendor_router, prefix="/api/v1/vendors", tags=["Vendors"])
 app.include_router(inventory_router, prefix="/api/v1", tags=["Inventory"])
 app.include_router(crowd_router, prefix="/api/v1/crowd", tags=["Crowd"])
+app.include_router(staff_router, prefix="/api/v1/staff", tags=["Staff"])
+
 
 
 
