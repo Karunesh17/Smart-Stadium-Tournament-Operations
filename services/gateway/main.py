@@ -30,28 +30,7 @@ Base.metadata.create_all(bind=engine)
 
 
 
-# Setup structured logging
-class JsonFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        log_data: Dict[str, Any] = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "service": "gateway",
-            "level": record.levelname,
-            "message": record.getMessage(),
-        }
-        if hasattr(record, "context"):
-            log_data["context"] = record.context
-        elif record.exc_info:
-            log_data["context"] = {"exception": self.formatException(record.exc_info)}
-        else:
-            log_data["context"] = {}
-        return json.dumps(log_data)
-
-logger = logging.getLogger("gateway")
-handler = logging.StreamHandler()
-handler.setFormatter(JsonFormatter())
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)
+from libs.logging_config import logger
 
 app = FastAPI(
     title="AI Smart Stadium Gateway",

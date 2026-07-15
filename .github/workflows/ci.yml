@@ -57,11 +57,15 @@ jobs:
 
       - name: Lint with black
         run: |
-          black --check services/
+          black --check services/ libs/
+
+      - name: Check imports with isort
+        run: |
+          isort --check-only --diff services/ libs/
 
       - name: Lint with ruff
         run: |
-          ruff check services/
+          ruff check services/ libs/
 
       - name: Run Tests
         env:
