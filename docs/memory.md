@@ -23,7 +23,8 @@ the implementing agent's self-report alone.
 | 7 - Dynamic Pricing | done | ran `pytest` integration tests on pricing engine, cooldown locks, and forecast calculations | 18 passed (8 auth, 1 health, 2 inventory, 2 crowd, 2 staff, 1 risk, 2 pricing). Calculations verify dynamic price surges (10.00 -> 10.40), cooldown locking (blocks updates under 30s), manual history logs commits, and forecast confidence mapping (9.60 price at 85% confidence), commit 8f6b2f5 |
 | 8 - AI Copilot | done | ran `pytest` integration tests on deterministic L2-normalized embeddings, RAG policy searches, dynamic DB grounding, and SSE token streaming | 22 passed (8 auth, 1 health, 2 inventory, 2 crowd, 2 staff, 1 risk, 2 pricing, 4 ai). Integrations verify 128-dim cosine similarity vectors, policy document matching, dynamic DB stock checking checks, and chunked SSE streaming, commit ac59be9 |
 | 9 - Analytics | done | ran `pytest` integration tests on KPI aggregations, RBAC permissions, and in-memory Redis cache isolation | 25 passed (8 auth, 1 health, 2 inventory, 2 crowd, 2 staff, 1 risk, 2 pricing, 4 ai, 3 analytics). Integrations verified precise SQL revenue reconciliations, strict caching layer behavior with TTL isolation, and premium security dashboard components built out. |
-| 10-11 | not started | — | — |
+| 10 - E2E Testing | done | ran `pytest tests/e2e` with 3 E2E journeys all passing; full suite re-run confirms 25 unit + 3 E2E = **28 passed, 0 failed** | Journeys: Vendor/Fan Commerce (sale → pricing surge → AI grounding), Security/Ops Risk (telemetry spike → incident → auto-task → staff resolution), Analytics Reconciliation (KPI dashboard cross-service data integrity). Load test script `scripts/run_load_test.py` written for live server stress. |
+| 11 - Deployment | not started | — | — |
 
 ## Known Issues / Unverified Claims
 - `docker-compose up` is unverified because Docker/docker-compose is not installed on this host environment (CommandNotFoundException).
@@ -32,7 +33,8 @@ the implementing agent's self-report alone.
 ## Deviations from rules.md / architecture.md
 - None. Database concurrency is correctly managed via SQL atomic update checks (`UPDATE item SET stock = stock - :quantity WHERE id = :id AND stock >= :quantity`) rather than database row-level locking (`with_for_update`) which is not fully supported by standard multithreaded SQLite test suites. This solution is thread-safe across all SQL-compliant database engines (SQLite and PostgreSQL).
 - Replaced actual Redis cluster initialization with robust custom fallback dict caching since a local Redis server instance is not configured on the testing node. Tested passing in isolation.
+- Pricing recalculation endpoint takes item_id as a **path parameter** (`/api/v1/pricing/recalculate/{item_id}`), not a request body. E2E tests verified against the real route.
+- Task status machine enforces strict transitions: `open → in-progress → done`. Direct jumps are rejected with 400.
 
 ## Next Action
-- Checkout develop, create a new branch `feature/phase10-e2e-testing`.
-- Phase 10: Launch the `pytest` test suite covering end-to-end user journeys (e.g., fan enters stadium -> buys item -> triggers dynamic pricing -> staff assigned cleanup task -> ops KPI dashboard logs update -> AI bot references context). Ensure no regression occurs and write a comprehensive E2E automation run script.
+- Phase 11: Production deployment — provision infrastructure (Docker Compose production config), write smoke tests, and validate all services are reachable via the gateway.
