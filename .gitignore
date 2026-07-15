@@ -26,6 +26,9 @@ __pycache__/
 postgres_data/
 qdrant_data/
 redis_data/
+*.db
+*.sqlite
+
 
 # IDE/OS files
 .idea/

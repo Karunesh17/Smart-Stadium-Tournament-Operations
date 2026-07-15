@@ -2,10 +2,18 @@ import logging
 import json
 import time
 from typing import Any, Dict
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, Depends
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from services.gateway.database import Base, engine
+from services.auth.router import router as auth_router
+from services.auth.security import get_current_user, RoleChecker
+from libs.shared_schemas.auth import UserResponse
+
+# Create database tables at startup for local SQLite development and testing
+Base.metadata.create_all(bind=engine)
 
 # Setup structured logging
 class JsonFormatter(logging.Formatter):
@@ -89,6 +97,9 @@ async def generic_exception_handler(request: Request, exc: Exception):
         }
     )
 
+# Include Routers
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
+
 # Health Check route
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def health_check():
@@ -99,3 +110,16 @@ async def health_check():
             "gateway": "up"
         }
     }
+
+# RBAC / Authenticated test endpoints
+@app.get("/api/v1/auth/me", response_model=UserResponse, tags=["Authentication"])
+async def get_me(current_user: UserResponse = Depends(get_current_user)):
+    return current_user
+
+@app.get("/api/v1/auth/admin-only", tags=["Authentication"])
+async def admin_only_route(current_user: UserResponse = Depends(RoleChecker(["admin"]))):
+    return {
+        "message": f"Hello Admin {current_user.name}! Access verified.",
+        "role": current_user.role
+    }
+
