@@ -1,0 +1,52 @@
+# Smart Stadium — .dockerignore
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Test databases
+*.db
+*.sqlite3
+e2e_test.db
+smart_stadium.db
+test_*.db
+
+# Test cache and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Git
+.git/
+.gitignore
+
+# IDE configs
+.vscode/
+.idea/
+*.code-workspace
+
+# Node / frontend (built separately)
+apps/
+node_modules/
+
+# Docs (not needed at runtime)
+docs/
+
+# Infra scripts (not needed inside container)
+infra/
+scripts/
+
+# Gemini / agent files
+.gemini/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
