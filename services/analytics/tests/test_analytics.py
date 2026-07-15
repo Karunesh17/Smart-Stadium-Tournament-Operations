@@ -26,6 +26,11 @@ def override_get_db():
 def setup_database():
     from services.gateway.redis_client import redis_manager
     redis_manager.local_cache.clear()
+    if redis_manager.client:
+        try:
+            redis_manager.client.delete("analytics:dashboard:cache")
+        except Exception:
+            pass
     app.dependency_overrides[get_db] = override_get_db
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
@@ -135,6 +140,11 @@ def test_analytics_aggregations_reconciliation():
 def test_analytics_redis_cache():
     from services.gateway.redis_client import redis_manager
     redis_manager.local_cache.clear()
+    if redis_manager.client:
+        try:
+            redis_manager.client.delete("analytics:dashboard:cache")
+        except Exception:
+            pass
 
     admin_headers = get_auth_header("admin@stadium.com", "Admin Boss", "admin")
 
