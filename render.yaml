@@ -16,3 +16,67 @@ services:
         generateValue: true
       # Leaving DATABASE_URL unset uses the project's SQLite demo database.
       # It is ephemeral on Render's free web service.
+  - type: web
+    name: smart-stadium-fan
+    runtime: node
+    plan: free
+    rootDir: apps/fan-app
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: API_URL
+        fromService:
+          type: web
+          name: smart-stadium-api
+          envVarKey: RENDER_EXTERNAL_URL
+  - type: web
+    name: smart-stadium-staff
+    runtime: node
+    plan: free
+    rootDir: apps/staff-app
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: API_URL
+        fromService:
+          type: web
+          name: smart-stadium-api
+          envVarKey: RENDER_EXTERNAL_URL
+  - type: web
+    name: smart-stadium-vendor
+    runtime: node
+    plan: free
+    rootDir: apps/vendor-app
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: API_URL
+        fromService:
+          type: web
+          name: smart-stadium-api
+          envVarKey: RENDER_EXTERNAL_URL
+  - type: web
+    name: smart-stadium-security
+    runtime: node
+    plan: free
+    rootDir: apps/security-dashboard
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: API_URL
+        fromService:
+          type: web
+          name: smart-stadium-api
+          envVarKey: RENDER_EXTERNAL_URL
