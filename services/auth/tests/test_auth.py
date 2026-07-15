@@ -6,7 +6,7 @@ from services.gateway.database import Base, get_db
 from services.gateway.main import app
 
 # Set up clean SQLite database for tests
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_auth.db"
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test_stadium.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -18,15 +18,16 @@ def override_get_db():
     finally:
         db.close()
 
-app.dependency_overrides[get_db] = override_get_db
-
 @pytest.fixture(autouse=True)
 def setup_database():
+    app.dependency_overrides[get_db] = override_get_db
     # Re-create database tables clean for each test session
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+    app.dependency_overrides.clear()
+
 
 client = TestClient(app, base_url="https://testserver")
 
