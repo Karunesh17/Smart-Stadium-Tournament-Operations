@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { ShoppingBag, AlertTriangle, Plus, Bell, RefreshCw, Sparkles, LogOut, TrendingUp, DollarSign, Calendar, BarChart2 } from 'lucide-react';
+import ChatWidget from '../../../../libs/shared-ui/ChatWidget';
+
 
 interface Item {
   id: number;
@@ -709,6 +711,7 @@ export default function VendorDashboard() {
         </div>
       )}
 
+      <ChatWidget role="vendor" />
     </div>
   );
-}
+}

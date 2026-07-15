@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, CheckCircle2, Play, Bell, AlertCircle, RefreshCw, Sparkles, User, LogOut } from 'lucide-react';
+import ChatWidget from '../../../../libs/shared-ui/ChatWidget';
+
 
 interface StaffProfile {
   id: number;
@@ -372,6 +374,8 @@ export default function StaffAppDashboard() {
           )}
         </section>
       </div>
+
+      <ChatWidget role="staff" />
     </div>
   );
-}
+}

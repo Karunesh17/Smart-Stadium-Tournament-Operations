@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Shield, Users, RefreshCw, AlertOctagon, Activity, Sparkles, CheckCircle2, AlertTriangle, LogOut, Flame, ShieldAlert, HeartPulse, HardHat, FileWarning } from 'lucide-react';
+import ChatWidget from '../../../../libs/shared-ui/ChatWidget';
+
 
 interface HeatmapArea {
   area_id: number;
@@ -651,6 +653,8 @@ export default function SecurityDashboard() {
           </div>
         </aside>
       </div>
+
+      <ChatWidget role="security" />
     </div>
   );
-}
+}
