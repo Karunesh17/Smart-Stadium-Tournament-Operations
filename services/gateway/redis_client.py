@@ -10,6 +10,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 class RedisManager:
     def __init__(self):
         self.client = None
+        self.local_cache = {}  # Local cache fallback when Redis is offline
         try:
             self.client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
             # Ping Redis to test connection
@@ -33,5 +34,28 @@ class RedisManager:
         logger.info(f"[SIMULATED REDIS PUBLISH] Channel '{channel}': {serialized}")
         return False
 
+    def get(self, key: str) -> str | None:
+        if self.client:
+            try:
+                return self.client.get(key)
+            except Exception as e:
+                logger.error(f"Failed to get key '{key}' from Redis: {e}")
+        
+        # Fallback to local in-memory dict cache
+        return self.local_cache.get(key)
+
+    def set(self, key: str, value: str, ex: int | None = None) -> bool:
+        if self.client:
+            try:
+                self.client.set(key, value, ex=ex)
+                return True
+            except Exception as e:
+                logger.error(f"Failed to set key '{key}' in Redis: {e}")
+        
+        # Fallback to local in-memory dict cache
+        self.local_cache[key] = value
+        return True
+
 # Global singleton
 redis_manager = RedisManager()
+

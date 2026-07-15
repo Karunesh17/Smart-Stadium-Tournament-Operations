@@ -16,11 +16,13 @@ from services.staff.router import router as staff_router
 from services.risk.router import router as risk_router
 from services.pricing.router import router as pricing_router
 from services.ai.router import router as ai_router
+from services.analytics.router import router as analytics_router
 from services.auth.security import get_current_user, RoleChecker
 from libs.shared_schemas.auth import UserResponse
 
 # Create database tables at startup for local SQLite development and testing
 Base.metadata.create_all(bind=engine)
+
 
 
 
@@ -119,6 +121,8 @@ app.include_router(staff_router, prefix="/api/v1/staff", tags=["Staff"])
 app.include_router(risk_router, prefix="/api/v1/incidents", tags=["Risk"])
 app.include_router(pricing_router, prefix="/api/v1/pricing", tags=["Pricing"])
 app.include_router(ai_router, prefix="/api/v1/chat", tags=["AI Copilot"])
+app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["Analytics"])
+
 
 
 
