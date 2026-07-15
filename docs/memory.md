@@ -6,10 +6,10 @@ read the actual output, then log it. Never log a phase as complete based on
 the implementing agent's self-report alone.
 
 ## Environment State
-- Last verified: 2026-07-15T11:29:00+05:30
-- `git log -1 --oneline`: 567705d feat(staff): implement shift scheduling, task assignments, state status validation constraints, WebSockets push stream, and Volunteer app portal dashboard
+- Last verified: 2026-07-15T11:34:00+05:30
+- `git log -1 --oneline`: 1835de8 feat(risk): implement risk scoring engine, auto-task escalations, manual overrides, and command dashboard live incidents dispatch feed
 - `docker-compose up` status: broken (Docker/docker-compose command is not installed on this host environment)
-- Branch: feature/phase5-staff
+- Branch: feature/phase6-risk
 
 ## Phase Status
 | Phase | Status | Verified By | Evidence |
@@ -19,7 +19,8 @@ the implementing agent's self-report alone.
 | 3 - Vendor | done | ran `pytest` integration and concurrency load tests | 11 passed (8 auth, 1 health, 2 inventory). Concurrency load test details: 10/10 checkouts succeed, 2/2 insufficient stock block (400), final stock count exactly 0, commit fa14557 |
 | 4 - Crowd | done | ran `pytest` integration and privacy audit tests | 13 passed (8 auth, 1 health, 2 inventory, 2 crowd). Privacy audit test passes programmatically (zero device or user identifiers in tables), commit bc6ceba |
 | 5 - Staff | done | ran `pytest` integration and WebSocket push tests | 15 passed (8 auth, 1 health, 2 inventory, 2 crowd, 2 staff). WebSocket test verifies instant backlog sync and new task pushes, commit 567705d |
-| 6-11 | not started | — | — |
+| 6 - Risk | done | ran `pytest` integration tests on scoring, overrides, and cascade resolution | 16 passed (8 auth, 1 health, 2 inventory, 2 crowd, 2 staff, 1 risk). Verification verifies low density score (2.5, medium), high density score (4.75, high), auto-task specialist assignment, manual override escalation, and resolution cascade status matching, commit 1835de8 |
+| 7-11 | not started | — | — |
 
 ## Known Issues / Unverified Claims
 - `docker-compose up` is unverified because Docker/docker-compose is not installed on this host environment (CommandNotFoundException).
