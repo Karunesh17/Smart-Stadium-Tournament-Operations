@@ -68,7 +68,7 @@ export default function LoginPage() {
       <div className="max-w-md w-full bg-bg-surface border border-border-subtle rounded-md p-8 shadow-xl">
         <div className="flex flex-col items-center mb-8">
           <div className="w-12 h-12 bg-accent-primary/10 rounded-full flex items-center justify-center mb-3">
-            <Shield className="w-6 h-6 text-accent-primary" />
+            <Shield className="w-6 h-6 text-accent-primary" aria-hidden="true" />
           </div>
           <h1 className="text-2xl font-bold text-text-primary">Sign In</h1>
           <p className="text-text-secondary text-sm mt-1">Smart Stadium Portal Gateway</p>
@@ -76,7 +76,7 @@ export default function LoginPage() {
 
         {error && (
           <div className="border border-status-critical/30 bg-status-critical/10 text-status-critical rounded-sm p-4 mb-6 flex items-start gap-3">
-            <AlertOctagon className="w-5 h-5 shrink-0 mt-0.5" />
+            <AlertOctagon className="w-5 h-5 shrink-0 mt-0.5" aria-hidden="true" />
             <div className="text-sm">
               <span className="font-semibold">Login Error:</span> {error}
             </div>
@@ -90,7 +90,7 @@ export default function LoginPage() {
             </label>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-text-secondary">
-                <Mail className="w-4 h-4" />
+                <Mail className="w-4 h-4" aria-hidden="true" />
               </span>
               <input
                 id="email"
@@ -110,7 +110,7 @@ export default function LoginPage() {
             </label>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-text-secondary">
-                <Lock className="w-4 h-4" />
+                <Lock className="w-4 h-4" aria-hidden="true" />
               </span>
               <input
                 id="password"
