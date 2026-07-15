@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, RefreshCw, AlertOctagon, Activity, Sparkles, CheckCircle2, ChevronRight, LogOut } from 'lucide-react';
+import { Shield, Users, RefreshCw, AlertOctagon, Activity, Sparkles, CheckCircle2, AlertTriangle, LogOut, Flame, ShieldAlert, HeartPulse, HardHat, FileWarning } from 'lucide-react';
 
 interface HeatmapArea {
   area_id: number;
   name: string;
-  capacity: int;
-  current_count: int;
+  capacity: number;
+  current_count: number;
   density_percentage: number;
   status: 'safe' | 'warning' | 'danger';
 }
@@ -17,8 +17,22 @@ interface HeatmapResponse {
   updated_at: string;
 }
 
+interface Incident {
+  id: number;
+  title: string;
+  description: string | null;
+  type: string;
+  area_id: number;
+  severity_score: number;
+  severity_level: 'info' | 'low' | 'medium' | 'high' | 'critical';
+  status: 'reported' | 'assigned' | 'resolved';
+  is_overridden: boolean;
+  created_at: string;
+}
+
 export default function SecurityDashboard() {
   const [heatmapData, setHeatmapData] = useState<HeatmapArea[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,17 +43,36 @@ export default function SecurityDashboard() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [simSuccess, setSimSuccess] = useState(false);
 
-  const fetchHeatmap = async () => {
+  // Incident intake form state
+  const [reportTitle, setReportTitle] = useState('');
+  const [reportDesc, setReportDesc] = useState('');
+  const [reportType, setReportType] = useState('general');
+  const [reportAreaId, setReportAreaId] = useState<number | null>(null);
+  const [isReporting, setIsReporting] = useState(false);
+  const [reportSuccess, setReportSuccess] = useState(false);
+
+  const fetchHeatmapAndIncidents = async () => {
+    const token = typeof window !== 'undefined' ? sessionStorage.getItem('access_token') : '';
     setError(null);
     try {
-      const res = await fetch('/api/v1/crowd/heatmap');
-      if (!res.ok) throw new Error('Failed to retrieve crowd heatmap telemetry.');
-      const data: HeatmapResponse = await res.json();
-      setHeatmapData(data.areas);
-      setLastUpdated(data.updated_at);
+      // 1. Fetch heatmap
+      const resHeatmap = await fetch('/api/v1/crowd/heatmap');
+      if (!resHeatmap.ok) throw new Error('Failed to retrieve crowd heatmap telemetry.');
+      const heatmap: HeatmapResponse = await resHeatmap.json();
+      setHeatmapData(heatmap.areas);
+      setLastUpdated(heatmap.updated_at);
+
+      // 2. Fetch incidents
+      const resIncidents = await fetch('/api/v1/incidents/', {
+        headers: { 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      if (resIncidents.ok) {
+        const incidentsData = await resIncidents.json();
+        setIncidents(incidentsData);
+      }
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message);
-      else setError('Failed to query density statistics.');
+      else setError('Failed to query operations statistics.');
     } finally {
       setIsLoading(false);
     }
@@ -47,8 +80,8 @@ export default function SecurityDashboard() {
 
   // Poll for updates every 3 seconds to satisfy the < 5s update window
   useEffect(() => {
-    fetchHeatmap();
-    const interval = setInterval(fetchHeatmap, 3000);
+    fetchHeatmapAndIncidents();
+    const interval = setInterval(fetchHeatmapAndIncidents, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -74,7 +107,7 @@ export default function SecurityDashboard() {
       
       setSimSuccess(true);
       setTimeout(() => setSimSuccess(false), 2000);
-      fetchHeatmap(); // Immediate update
+      fetchHeatmapAndIncidents(); // Immediate update
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message);
       else setError('Telemetry submission error.');
@@ -96,7 +129,90 @@ export default function SecurityDashboard() {
         })
       });
       if (!res.ok) throw new Error('Failed to trigger spike.');
-      fetchHeatmap();
+      fetchHeatmapAndIncidents();
+    } catch (err: unknown) {
+      if (err instanceof Error) setError(err.message);
+    }
+  };
+
+  // Incident reporting submit
+  const handleReportIncidentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportAreaId) return;
+    setIsReporting(true);
+    setReportSuccess(false);
+    setError(null);
+    const token = typeof window !== 'undefined' ? sessionStorage.getItem('access_token') : '';
+
+    try {
+      const res = await fetch('/api/v1/incidents/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({
+          title: reportTitle,
+          description: reportDesc,
+          type: reportType,
+          area_id: reportAreaId
+        })
+      });
+
+      if (!res.ok) throw new Error('Failed to report incident to risk engine.');
+
+      setReportSuccess(true);
+      setReportTitle('');
+      setReportDesc('');
+      setTimeout(() => setReportSuccess(false), 2000);
+      fetchHeatmapAndIncidents();
+    } catch (err: unknown) {
+      if (err instanceof Error) setError(err.message);
+      else setError('Failed to submit incident report.');
+    } finally {
+      setIsReporting(false);
+    }
+  };
+
+  // Incident severity manual override
+  const handleOverrideSeverity = async (incidentId: number, newLevel: string) => {
+    setError(null);
+    const token = typeof window !== 'undefined' ? sessionStorage.getItem('access_token') : '';
+
+    try {
+      const res = await fetch(`/api/v1/incidents/${incidentId}/override`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ severity_level: newLevel })
+      });
+
+      if (!res.ok) throw new Error('Failed to override incident severity level.');
+      fetchHeatmapAndIncidents();
+    } catch (err: unknown) {
+      if (err instanceof Error) setError(err.message);
+    }
+  };
+
+  // Resolve incident
+  const handleResolveIncident = async (incidentId: number) => {
+    setError(null);
+    const token = typeof window !== 'undefined' ? sessionStorage.getItem('access_token') : '';
+
+    try {
+      const res = await fetch(`/api/v1/incidents/${incidentId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ status: 'resolved' })
+      });
+
+      if (!res.ok) throw new Error('Failed to resolve incident.');
+      fetchHeatmapAndIncidents();
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message);
     }
@@ -113,12 +229,30 @@ export default function SecurityDashboard() {
     return { card: 'border-status-critical/30 bg-status-critical/5', label: 'text-status-critical bg-status-critical/10 border-status-critical/20', badge: 'bg-status-critical' };
   };
 
+  const getSeverityBadgeClasses = (level: string) => {
+    if (level === 'critical') return 'text-status-critical bg-status-critical/10 border-status-critical/30';
+    if (level === 'high') return 'text-status-critical/80 bg-status-critical/5 border-status-critical/20';
+    if (level === 'medium') return 'text-status-warning bg-status-warning/10 border-status-warning/30';
+    if (level === 'low') return 'text-text-primary bg-bg-elevated border-border-subtle';
+    return 'text-text-secondary bg-bg-elevated/40 border-border-subtle/50';
+  };
+
+  const getIncidentIcon = (type: string) => {
+    if (type === 'fire') return <Flame className="w-4 h-4 text-status-critical" />;
+    if (type === 'medical') return <HeartPulse className="w-4 h-4 text-status-critical" />;
+    if (type === 'security') return <ShieldAlert className="w-4 h-4 text-status-warning" />;
+    if (type === 'structural') return <HardHat className="w-4 h-4 text-status-warning" />;
+    return <FileWarning className="w-4 h-4 text-text-secondary" />;
+  };
+
   const getRiskStatus = () => {
+    const activeIncidentsCount = incidents.filter(i => i.status !== 'resolved').length;
     const dangerAreas = heatmapData.filter(a => a.status === 'danger');
-    if (dangerAreas.length > 0) return { label: 'CRITICAL CONGESTION', color: 'text-status-critical bg-status-critical/10 border-status-critical/30' };
-    const warningAreas = heatmapData.filter(a => a.status === 'warning');
-    if (warningAreas.length > 0) return { label: 'ELEVATED ALERT', color: 'text-status-warning bg-status-warning/10 border-status-warning/30' };
-    return { label: 'SECURE', color: 'text-status-ok bg-status-ok/10 border-status-ok/30' };
+    
+    if (activeIncidentsCount > 0 || dangerAreas.length > 0) {
+      return { label: 'ELEVATED THREAT LEVEL', color: 'text-status-critical bg-status-critical/10 border-status-critical/30' };
+    }
+    return { label: 'STABLE OPERATIONS', color: 'text-status-ok bg-status-ok/10 border-status-ok/30' };
   };
 
   const handleLogout = () => {
@@ -136,13 +270,13 @@ export default function SecurityDashboard() {
           <Shield className="w-6 h-6 text-accent-primary" />
           <span className="font-bold text-lg tracking-wider text-text-primary">SECURITY COMMAND</span>
           <span className="text-xs font-mono px-2 py-0.5 bg-bg-elevated border border-border-subtle rounded text-text-secondary">
-            Telemetry Dashboard
+            Telemetry & Risk Control
           </span>
         </div>
         <div className="flex items-center gap-6">
           <div className={`flex items-center gap-2 px-3 py-1 border rounded font-mono text-xs font-bold ${getRiskStatus().color}`}>
             <span className="w-2 h-2 rounded-full bg-current animate-pulse"></span>
-            <span>RISK LEVEL: {getRiskStatus().label}</span>
+            <span>RISK: {getRiskStatus().label}</span>
           </div>
           <button 
             onClick={handleLogout}
@@ -153,7 +287,7 @@ export default function SecurityDashboard() {
           </button>
           <div className="flex items-center gap-1 text-ai-accent text-xs font-semibold px-2 py-1 bg-ai-accent/15 border border-ai-accent/30 rounded">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Copilot Guard Active</span>
+            <span>Guard Engine Online</span>
           </div>
         </div>
       </header>
@@ -169,15 +303,27 @@ export default function SecurityDashboard() {
           )}
 
           {/* Quick Stats Panel */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="bg-bg-surface border border-border-subtle rounded-md p-5 flex items-center gap-4">
               <div className="p-3 bg-accent-primary/10 rounded">
                 <Shield className="w-6 h-6 text-accent-primary" />
               </div>
               <div>
-                <p className="text-xs text-text-secondary font-semibold uppercase">Total Safe Sectors</p>
+                <p className="text-xs text-text-secondary font-semibold uppercase">Sectors Guarded</p>
                 <h3 className="text-2xl font-bold text-text-primary">
                   {heatmapData.filter(a => a.status === 'safe').length} / {heatmapData.length}
+                </h3>
+              </div>
+            </div>
+
+            <div className="bg-bg-surface border border-border-subtle rounded-md p-5 flex items-center gap-4">
+              <div className="p-3 bg-status-critical/10 rounded">
+                <AlertTriangle className="w-6 h-6 text-status-critical" />
+              </div>
+              <div>
+                <p className="text-xs text-text-secondary font-semibold uppercase">Active Incidents</p>
+                <h3 className="text-2xl font-bold text-text-primary font-mono">
+                  {incidents.filter(i => i.status !== 'resolved').length}
                 </h3>
               </div>
             </div>
@@ -187,19 +333,19 @@ export default function SecurityDashboard() {
                 <Users className="w-6 h-6 text-status-warning" />
               </div>
               <div>
-                <p className="text-xs text-text-secondary font-semibold uppercase">Current Occupancy</p>
-                <h3 className="text-2xl font-bold text-text-primary font-mono">
+                <p className="text-xs text-text-secondary font-semibold uppercase">Stadium Occupancy</p>
+                <h3 className="text-2xl font-bold text-text-primary font-mono text-base">
                   {totalOccupancy.toLocaleString()} <span className="text-xs text-text-secondary">/ {totalCapacity.toLocaleString()}</span>
                 </h3>
               </div>
             </div>
 
             <div className="bg-bg-surface border border-border-subtle rounded-md p-5 flex items-center gap-4">
-              <div className="p-3 bg-status-critical/10 rounded">
-                <Activity className="w-6 h-6 text-status-critical" />
+              <div className="p-3 bg-bg-elevated rounded">
+                <Activity className="w-6 h-6 text-text-secondary" />
               </div>
               <div>
-                <p className="text-xs text-text-secondary font-semibold uppercase">Average Density</p>
+                <p className="text-xs text-text-secondary font-semibold uppercase">Avg Density</p>
                 <h3 className="text-2xl font-bold text-text-primary font-mono">
                   {averageDensity.toFixed(1)}%
                 </h3>
@@ -215,7 +361,7 @@ export default function SecurityDashboard() {
                 <p className="text-xs text-text-secondary mt-0.5">Real-time CCTV and Wi-Fi scanner estimates</p>
               </div>
               <button 
-                onClick={fetchHeatmap}
+                onClick={fetchHeatmapAndIncidents}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated border border-border-subtle hover:bg-bg-elevated/80 text-xs font-semibold text-text-secondary rounded transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
@@ -286,80 +432,220 @@ export default function SecurityDashboard() {
               </div>
             )}
           </section>
-        </main>
 
-        {/* Right side simulator panel */}
-        <aside className="w-full lg:w-96 bg-bg-surface border-t lg:border-t-0 lg:border-l border-border-subtle p-6 space-y-6">
-          <div className="border-b border-border-subtle pb-4">
-            <h3 className="text-md font-bold text-text-primary flex items-center gap-1.5">
-              <Activity className="w-4 h-4 text-accent-primary" />
-              <span>CCTV & BLE Telemetry Simulator</span>
-            </h3>
-            <p className="text-xs text-text-secondary mt-1">Simulate live hardware counts directly from client console</p>
-          </div>
-
-          <form onSubmit={handleSimulateSubmit} className="space-y-4">
+          {/* INCIDENTS DISPATCH FEED SECTION */}
+          <section className="bg-bg-surface border border-border-subtle rounded-md p-6 space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-text-secondary mb-1.5">
-                Target Sector
-              </label>
-              <select
-                className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs focus:outline-none focus:border-accent-primary"
-                value={selectedAreaId || ''}
-                onChange={(e) => setSelectedAreaId(Number(e.target.value))}
-                required
-              >
-                <option value="">-- Choose Area Sector --</option>
-                {heatmapData.map(a => (
-                  <option key={a.area_id} value={a.area_id}>{a.name}</option>
-                ))}
-              </select>
+              <h2 className="text-lg font-bold text-text-primary">Live Incident Dispatch Feed</h2>
+              <p className="text-xs text-text-secondary mt-0.5">Calculated severity scoring engine with operator override triggers</p>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-text-secondary mb-1.5">
-                Simulated Headcount Count
-              </label>
-              <input
-                type="number"
-                min="0"
-                className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs font-mono focus:outline-none focus:border-accent-primary"
-                value={simCount}
-                onChange={(e) => setSimCount(Math.max(0, Number(e.target.value)))}
-                required
-              />
-            </div>
+            {incidents.filter(i => i.status !== 'resolved').length === 0 ? (
+              <div className="border border-dashed border-border-subtle rounded p-8 text-center text-xs text-text-secondary">
+                No active incidents reported. Stadium perimeter is secure.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {incidents.filter(i => i.status !== 'resolved').map(incident => {
+                  const area = heatmapData.find(a => a.area_id === incident.area_id);
+                  return (
+                    <div key={incident.id} className="border border-border-subtle bg-bg-elevated/40 p-4 rounded flex flex-col md:flex-row justify-between gap-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          {getIncidentIcon(incident.type)}
+                          <h4 className="font-bold text-sm text-text-primary">{incident.title}</h4>
+                          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 border rounded-sm ${getSeverityBadgeClasses(incident.severity_level)}`}>
+                            {incident.severity_level.toUpperCase()}
+                          </span>
+                          {incident.is_overridden && (
+                            <span className="text-[10px] font-mono text-accent-primary bg-accent-primary/10 px-1 border border-accent-primary/20 rounded">
+                              OVERRIDDEN
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-text-secondary">{incident.description || 'No description provided.'}</p>
+                        <div className="text-[10px] font-mono text-text-secondary flex gap-3">
+                          <span>Location: {area ? area.name : `Area #${incident.area_id}`}</span>
+                          <span>Score: {incident.severity_score}</span>
+                          <span>Status: <span className="text-status-warning uppercase font-semibold">{incident.status}</span></span>
+                        </div>
+                      </div>
 
-            <button
-              type="submit"
-              className="w-full py-2 bg-accent-primary text-white text-xs font-bold rounded hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5"
-              disabled={isSimulating || !selectedAreaId}
-            >
-              {isSimulating ? "Streaming Ingest..." : "Post Telemetry Count"}
-            </button>
-
-            {simSuccess && (
-              <div className="flex items-center gap-1 text-xs text-status-ok justify-center font-semibold mt-1">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Count updated in heatmap!</span>
+                      <div className="flex items-center gap-3 self-end md:self-center">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[9px] font-semibold text-text-secondary uppercase">Override Severity</label>
+                          <select
+                            value={incident.severity_level}
+                            onChange={(e) => handleOverrideSeverity(incident.id, e.target.value)}
+                            className="bg-bg-surface border border-border-subtle text-text-primary rounded px-2 py-1 text-xs focus:outline-none focus:border-accent-primary"
+                          >
+                            <option value="info">Info</option>
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                          </select>
+                        </div>
+                        <button
+                          onClick={() => handleResolveIncident(incident.id)}
+                          className="px-3 py-1.5 bg-status-ok/20 hover:bg-status-ok/30 border border-status-ok/35 text-status-ok text-xs font-bold rounded"
+                        >
+                          Resolve
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
-          </form>
+          </section>
+        </main>
 
-          <div className="border-t border-border-subtle pt-4 space-y-4">
-            <h4 className="text-xs font-bold text-text-secondary uppercase">Telemetry Details</h4>
+        {/* Right side simulator & intake panel */}
+        <aside className="w-full lg:w-96 bg-bg-surface border-t lg:border-t-0 lg:border-l border-border-subtle p-6 space-y-6">
+          {/* Simulation */}
+          <div className="space-y-4 border-b border-border-subtle pb-6">
+            <div>
+              <h3 className="text-md font-bold text-text-primary flex items-center gap-1.5">
+                <Activity className="w-4 h-4 text-accent-primary" />
+                <span>CCTV & BLE Telemetry Simulator</span>
+              </h3>
+              <p className="text-xs text-text-secondary mt-1">Simulate live hardware counts directly from client console</p>
+            </div>
+
+            <form onSubmit={handleSimulateSubmit} className="space-y-3">
+              <div>
+                <select
+                  className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs focus:outline-none focus:border-accent-primary"
+                  value={selectedAreaId || ''}
+                  onChange={(e) => setSelectedAreaId(Number(e.target.value))}
+                  required
+                >
+                  <option value="">-- Choose Area Sector --</option>
+                  {heatmapData.map(a => (
+                    <option key={a.area_id} value={a.area_id}>{a.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs font-mono focus:outline-none focus:border-accent-primary"
+                  value={simCount}
+                  onChange={(e) => setSimCount(Math.max(0, Number(e.target.value)))}
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2 bg-accent-primary text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
+                disabled={isSimulating || !selectedAreaId}
+              >
+                {isSimulating ? "Streaming Ingest..." : "Post Telemetry Count"}
+              </button>
+
+              {simSuccess && (
+                <div className="flex items-center gap-1 text-xs text-status-ok justify-center font-semibold mt-1">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Count updated in heatmap!</span>
+                </div>
+              )}
+            </form>
+          </div>
+
+          {/* Incident reporting intake */}
+          <div className="space-y-4 border-b border-border-subtle pb-6">
+            <div>
+              <h3 className="text-md font-bold text-text-primary flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-status-critical" />
+                <span>Report Incident Intake</span>
+              </h3>
+              <p className="text-xs text-text-secondary mt-1">File a new security issue to risk engine scoring</p>
+            </div>
+
+            <form onSubmit={handleReportIncidentSubmit} className="space-y-3">
+              <div>
+                <input
+                  type="text"
+                  placeholder="Incident Title (e.g. Crowd Surge)"
+                  value={reportTitle}
+                  onChange={(e) => setReportTitle(e.target.value)}
+                  className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs focus:outline-none focus:border-accent-primary"
+                  required
+                />
+              </div>
+
+              <div>
+                <textarea
+                  placeholder="Description details..."
+                  value={reportDesc}
+                  onChange={(e) => setReportDesc(e.target.value)}
+                  className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs h-16 resize-none focus:outline-none focus:border-accent-primary"
+                />
+              </div>
+
+              <div>
+                <select
+                  value={reportType}
+                  onChange={(e) => setReportType(e.target.value)}
+                  className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs focus:outline-none focus:border-accent-primary"
+                >
+                  <option value="general">General</option>
+                  <option value="fire">Concession Fire (3x)</option>
+                  <option value="medical">Medical Emergency (2.5x)</option>
+                  <option value="security">Security Incident (2x)</option>
+                  <option value="structural">Structural Issue (2.5x)</option>
+                </select>
+              </div>
+
+              <div>
+                <select
+                  className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs focus:outline-none focus:border-accent-primary"
+                  value={reportAreaId || ''}
+                  onChange={(e) => setReportAreaId(Number(e.target.value))}
+                  required
+                >
+                  <option value="">-- Location Area Sector --</option>
+                  {heatmapData.map(a => (
+                    <option key={a.area_id} value={a.area_id}>{a.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2 bg-status-critical text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
+                disabled={isReporting || !reportAreaId}
+              >
+                {isReporting ? "Filing Incident Report..." : "Log Incident Report"}
+              </button>
+
+              {reportSuccess && (
+                <div className="flex items-center gap-1 text-xs text-status-ok justify-center font-semibold mt-1">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Report filed and scored!</span>
+                </div>
+              )}
+            </form>
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="text-xs font-bold text-text-secondary uppercase">Risk Engine Factors</h4>
             <div className="bg-bg-elevated p-3 border border-border-subtle rounded space-y-2 text-xs font-mono">
               <div className="flex justify-between">
-                <span className="text-text-secondary">Last Sync:</span>
-                <span className="text-text-primary">{lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : 'Never'}</span>
+                <span className="text-text-secondary">Density Mult:</span>
+                <span className="text-text-primary">1.0 + (Occupancy / Capacity)</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-text-secondary">Ingest Sync Channel:</span>
-                <span className="text-accent-primary">crowd.updated</span>
+                <span className="text-text-secondary">Night Shift Mult:</span>
+                <span className="text-text-primary">1.5x (18:00 - 06:00 UTC)</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-text-secondary">Identifier Gating:</span>
-                <span className="text-status-ok font-semibold">Anonymized</span>
+                <span className="text-text-secondary">Auto-Task Escalate:</span>
+                <span className="text-status-critical font-semibold">High / Critical</span>
               </div>
             </div>
           </div>
