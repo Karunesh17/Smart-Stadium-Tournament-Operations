@@ -21,6 +21,9 @@ router = APIRouter()
 REFRESH_COOKIE_NAME = "refresh_token"
 
 def set_refresh_cookie(response: Response, token: str):
+    import os
+    # Default to Secure cookies in production, but allow override for local plain HTTP runs
+    is_secure = os.getenv("AUTH_COOKIE_SECURE", "true").lower() == "true"
     response.set_cookie(
         key=REFRESH_COOKIE_NAME,
         value=token,
@@ -28,8 +31,9 @@ def set_refresh_cookie(response: Response, token: str):
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         expires=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         samesite="strict",
-        secure=True, # Production-ready Secure cookies
+        secure=is_secure,
     )
+
 
 @router.post(
     "/register",
