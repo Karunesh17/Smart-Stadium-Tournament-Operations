@@ -6,10 +6,10 @@ read the actual output, then log it. Never log a phase as complete based on
 the implementing agent's self-report alone.
 
 ## Environment State
-- Last verified: 2026-07-15T11:21:00+05:30
-- `git log -1 --oneline`: fa14557 feat(vendor): implement vendor profile management, concessions catalog, and atomic POS sales checkouts with concurrency thread-pool tests
+- Last verified: 2026-07-15T11:25:00+05:30
+- `git log -1 --oneline`: bc6ceba feat(crowd): implement crowd tracking, BLE telemetry ingestion, real-time density calculations, sensor simulator, and visual heatmap dashboard
 - `docker-compose up` status: broken (Docker/docker-compose command is not installed on this host environment)
-- Branch: feature/phase3-vendor
+- Branch: feature/phase4-crowd
 
 ## Phase Status
 | Phase | Status | Verified By | Evidence |
@@ -17,7 +17,8 @@ the implementing agent's self-report alone.
 | 1 - Setup | done | ran `pytest` on gateway health check | 1 passed, commit e702993 |
 | 2 - Auth | done | ran `pytest` and live HTTP uvicorn server script | 9 passed (8 auth, 1 health). Live test run output: Register (201), Login (200), Profile (200), Gating Vendor (403 Forbidden), Gating Admin (200 Access verified), Refresh Token (200 OK), Logout (200), commit 7a42c9f |
 | 3 - Vendor | done | ran `pytest` integration and concurrency load tests | 11 passed (8 auth, 1 health, 2 inventory). Concurrency load test details: 10/10 checkouts succeed, 2/2 insufficient stock block (400), final stock count exactly 0, commit fa14557 |
-| 4-11 | not started | — | — |
+| 4 - Crowd | done | ran `pytest` integration and privacy audit tests | 13 passed (8 auth, 1 health, 2 inventory, 2 crowd). Privacy audit test passes programmatically (zero device or user identifiers in tables), commit bc6ceba |
+| 5-11 | not started | — | — |
 
 ## Known Issues / Unverified Claims
 - `docker-compose up` is unverified because Docker/docker-compose is not installed on this host environment (CommandNotFoundException).
