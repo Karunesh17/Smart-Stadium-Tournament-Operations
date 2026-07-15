@@ -62,6 +62,7 @@ def create_item(
         vendor_id=item_data.vendor_id,
         name=item_data.name,
         base_price=item_data.base_price,
+        original_price=item_data.base_price,
         stock=item_data.stock,
         updated_at=datetime.datetime.utcnow()
     )
@@ -69,6 +70,7 @@ def create_item(
     db.commit()
     db.refresh(new_item)
     return new_item
+
 
 @router.get(
     "/items",
@@ -187,7 +189,16 @@ def record_sale(
         db.commit()
         db.refresh(new_sale)
 
+        # Trigger Dynamic Price Recalculation (triggers pricing logs and updates in place)
+        try:
+            from services.pricing.router import run_recalculation
+            run_recalculation(item, db)
+        except Exception as pe:
+            # Pricing failure should not block the core POS sale checkout from succeeding
+            print(f"Dynamic pricing notification bypass: {pe}")
+
     except Exception as e:
+
         db.rollback()
         if isinstance(e, HTTPException):
             raise e

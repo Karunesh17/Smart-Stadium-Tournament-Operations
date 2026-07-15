@@ -35,12 +35,14 @@ class ItemResponse(BaseModel):
     vendor_id: int
     name: str
     base_price: float
+    original_price: Optional[float] = None
     stock: int
     updated_at: datetime.datetime
 
     model_config = {
         "from_attributes": True
     }
+
 
 # Sale schemas
 class SaleCreate(BaseModel):

@@ -9,8 +9,10 @@ class Item(Base):
     vendor_id = Column(Integer, ForeignKey("vendor.id", ondelete="RESTRICT"), nullable=False)
     name = Column(String, nullable=False)
     base_price = Column(Float, nullable=False)
+    original_price = Column(Float, nullable=True) # Floor starting price
     stock = Column(Integer, nullable=False)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
 
     __table_args__ = (
         CheckConstraint("stock >= 0", name="check_positive_stock"),

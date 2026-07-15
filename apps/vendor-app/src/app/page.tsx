@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, AlertTriangle, Plus, Bell, RefreshCw, Sparkles, LogOut } from 'lucide-react';
+import { ShoppingBag, AlertTriangle, Plus, Bell, RefreshCw, Sparkles, LogOut, TrendingUp, DollarSign, Calendar, BarChart2 } from 'lucide-react';
 
 interface Item {
   id: number;
   vendor_id: number;
   name: string;
-  base_price: number;
+  base_price: number; // Dynamic price
+  original_price: number | null; // Starting floor
   stock: number;
   updated_at: string;
 }
@@ -20,13 +21,23 @@ interface Sale {
   timestamp: string;
 }
 
+interface PricingHistory {
+  id: number;
+  item_id: number;
+  old_price: number;
+  new_price: number;
+  reason: string;
+  timestamp: string;
+}
+
 export default function VendorDashboard() {
   const [items, setItems] = useState<Item[]>([]);
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
-  const [vendorName, setVendorName] = useState("Priya's Concessions");
+  const [pricingHistory, setPricingHistory] = useState<PricingHistory[]>([]);
+  const [vendorName] = useState("Priya's Stadium Concessions");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'items' | 'sales'>('items');
+  const [activeTab, setActiveTab] = useState<'items' | 'sales' | 'pricing-logs'>('items');
 
   // Checkout modal state
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
@@ -40,31 +51,48 @@ export default function VendorDashboard() {
   const [newItemStock, setNewItemStock] = useState(50);
   const [isAddLoading, setIsAddLoading] = useState(false);
 
-  const fetchInventory = async () => {
-    setIsLoading(true);
+  // Forecast Simulation State
+  const [forecastItemId, setForecastItemId] = useState<number | null>(null);
+  const [forecastQty, setForecastQty] = useState(15);
+  const [isForecasting, setIsForecasting] = useState(false);
+  const [forecastResult, setForecastResult] = useState<{ price: number; basis: string; score: number } | null>(null);
+
+  const fetchAllVendorData = async () => {
     setError(null);
     try {
-      const res = await fetch('/api/v1/items');
-      if (!res.ok) throw new Error('Failed to load catalog inventory items.');
-      const data = await res.json();
-      setItems(data);
+      // 1. Fetch inventory
+      const resItems = await fetch('/api/v1/items');
+      if (!resItems.ok) throw new Error('Failed to load catalog inventory items.');
+      const itemsData = await resItems.json();
+      setItems(itemsData);
+
+      // 2. Fetch sales
+      const resSales = await fetch('/api/v1/sales');
+      if (resSales.ok) {
+        const salesData = await resSales.json();
+        setRecentSales(salesData);
+      }
+
+      // 3. Fetch pricing history
+      const resHistory = await fetch('/api/v1/pricing/history');
+      if (resHistory.ok) {
+        const historyData = await resHistory.json();
+        setPricingHistory(historyData);
+      }
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message);
-      else setError('An error occurred loading catalog data.');
+      else setError('An error occurred updating catalog analytics.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Poll for updates every 4 seconds
   useEffect(() => {
-    fetchInventory();
+    fetchAllVendorData();
+    const interval = setInterval(fetchAllVendorData, 4000);
+    return () => clearInterval(interval);
   }, []);
-
-  const handleSellClick = (item: Item) => {
-    setSelectedItem(item);
-    setQuantity(1);
-    setError(null);
-  };
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,24 +111,19 @@ export default function VendorDashboard() {
         },
         body: JSON.stringify({
           item_id: selectedItem.id,
-          quantity: quantity
+          quantity: Number(quantity)
         }),
       });
 
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.detail || 'Checkout transaction failed.');
+        throw new Error(errData.detail || 'Insufficient inventory levels or payment error.');
       }
 
       const saleRecord: Sale = await res.json();
       
-      // Update inventory lists in place
-      setItems(prevItems => 
-        prevItems.map(it => 
-          it.id === selectedItem.id ? { ...it, stock: it.stock - quantity } : it
-        )
-      );
-      setRecentSales(prevSales => [saleRecord, ...prevSales]);
+      // Instantly refresh list to get dynamic prices triggered by checkouts
+      await fetchAllVendorData();
       setSelectedItem(null);
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message);
@@ -122,7 +145,6 @@ export default function VendorDashboard() {
     const token = typeof window !== 'undefined' ? sessionStorage.getItem('access_token') : '';
 
     try {
-      // In MVP, we assume vendor_id = 1 for the default vendor profile
       const res = await fetch('/api/v1/items', {
         method: 'POST',
         headers: {
@@ -130,7 +152,7 @@ export default function VendorDashboard() {
           'Authorization': token ? `Bearer ${token}` : '',
         },
         body: JSON.stringify({
-          vendor_id: 1,
+          vendor_id: 1, // Assume default vendor ID
           name: newItemName,
           base_price: Number(newItemPrice),
           stock: Number(newItemStock)
@@ -148,6 +170,7 @@ export default function VendorDashboard() {
       setNewItemName('');
       setNewItemPrice(10.00);
       setNewItemStock(50);
+      fetchAllVendorData();
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message);
       else setError('Failed to register catalog item.');
@@ -156,10 +179,42 @@ export default function VendorDashboard() {
     }
   };
 
+  // Forecast submit simulation
+  const handleForecastSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forecastItemId) return;
+    setIsForecasting(true);
+    setForecastResult(null);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/v1/pricing/forecast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          item_id: forecastItemId,
+          projected_sales_quantity: Number(forecastQty)
+        })
+      });
+
+      if (!res.ok) throw new Error('Forecasting simulation failed.');
+      const data = await res.json();
+      setForecastResult({
+        price: data.projected_price,
+        basis: data.confidence_basis,
+        score: data.confidence_score
+      });
+    } catch (err: unknown) {
+      if (err instanceof Error) setError(err.message);
+    } finally {
+      setIsForecasting(false);
+    }
+  };
+
   const getStockStatus = (stock: number) => {
-    if (stock >= 10) return { label: "OK", color: "text-status-ok bg-status-ok/10 border-status-ok/30", dot: "bg-status-ok" };
-    if (stock > 0) return { label: "WARN", color: "text-status-warning bg-status-warning/10 border-status-warning/30", dot: "bg-status-warning" };
-    return { label: "CRIT", color: "text-status-critical bg-status-critical/10 border-status-critical/30", dot: "bg-status-critical" };
+    if (stock >= 10) return { label: "IN STOCK", color: "text-status-ok bg-status-ok/10 border-status-ok/30", dot: "bg-status-ok" };
+    if (stock > 0) return { label: "LOW STOCK", color: "text-status-warning bg-status-warning/10 border-status-warning/30", dot: "bg-status-warning" };
+    return { label: "OUT OF STOCK", color: "text-status-critical bg-status-critical/10 border-status-critical/30", dot: "bg-status-critical" };
   };
 
   const handleLogout = () => {
@@ -169,27 +224,23 @@ export default function VendorDashboard() {
     }
   };
 
+  const activeSurges = items.filter(it => it.original_price && it.base_price > it.original_price).length;
+
   return (
     <div className="flex flex-col min-h-screen bg-bg-primary text-text-primary">
       {/* Top Navbar */}
       <header className="flex items-center justify-between px-6 py-4 bg-bg-surface border-b border-border-subtle sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <ShoppingBag className="w-6 h-6 text-accent-primary" />
-          <span className="font-bold text-lg tracking-wider text-text-primary">SMART STADIUM POS</span>
+          <span className="font-bold text-lg tracking-wider text-text-primary">STADIUM CONCESSIONS POS</span>
           <span className="text-xs font-mono px-2 py-0.5 bg-bg-elevated border border-border-subtle rounded text-text-secondary">
             Vendor Portal
           </span>
         </div>
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-text-primary">{vendorName}</span>
-          </div>
-          <button className="relative text-text-secondary hover:text-text-primary transition-colors">
-            <Bell className="w-5 h-5" />
-            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-status-critical rounded-full flex items-center justify-center text-[10px] font-bold text-white">
-              3
-            </span>
-          </button>
+          <span className="text-sm font-semibold text-text-secondary font-mono">
+            Merchant: {vendorName}
+          </span>
           <button 
             onClick={handleLogout}
             className="text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1.5 text-sm"
@@ -199,314 +250,465 @@ export default function VendorDashboard() {
           </button>
           <div className="flex items-center gap-1 text-ai-accent text-xs font-semibold px-2 py-1 bg-ai-accent/15 border border-ai-accent/30 rounded">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Copilot Ready</span>
+            <span>Dynamic Engine Active</span>
           </div>
         </div>
       </header>
 
-      {/* Main Grid Wrapper */}
-      <div className="flex flex-1">
-        {/* Left Sidebar */}
-        <aside className="w-60 bg-bg-surface border-r border-border-subtle p-6 flex flex-col justify-between hidden md:flex">
-          <div className="space-y-8">
-            <div>
-              <p className="text-xs font-semibold tracking-wider text-text-secondary uppercase mb-4">Operations</p>
-              <nav className="space-y-1">
-                <button
-                  onClick={() => setActiveTab('items')}
-                  className={`w-full text-left px-3 py-2 text-sm font-semibold rounded-sm transition-colors flex items-center gap-2 ${
-                    activeTab === 'items'
-                      ? 'bg-accent-primary/10 text-accent-primary border-l-2 border-accent-primary'
-                      : 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary'
-                  }`}
-                >
-                  Concessions Inventory
-                </button>
-                <button
-                  onClick={() => setActiveTab('sales')}
-                  className={`w-full text-left px-3 py-2 text-sm font-semibold rounded-sm transition-colors flex items-center gap-2 ${
-                    activeTab === 'sales'
-                      ? 'bg-accent-primary/10 text-accent-primary border-l-2 border-accent-primary'
-                      : 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary'
-                  }`}
-                >
-                  Transaction Sales
-                </button>
-              </nav>
-            </div>
-          </div>
-          <div className="border-t border-border-subtle pt-4">
-            <button
-              onClick={fetchInventory}
-              className="w-full flex items-center justify-center gap-2 py-2 border border-border-subtle hover:bg-bg-elevated rounded-sm text-xs font-semibold text-text-secondary hover:text-text-primary transition-all"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Refresh Catalog</span>
-            </button>
-          </div>
-        </aside>
-
-        {/* Content Area */}
-        <main className="flex-1 p-6 overflow-y-auto">
+      {/* Main Grid Workspace */}
+      <div className="flex flex-1 flex-col lg:flex-row">
+        
+        {/* Left dashboard main view */}
+        <main className="flex-1 p-6 space-y-6">
           {error && (
-            <div className="mb-6 border border-status-critical/30 bg-status-critical/10 text-status-critical rounded-sm p-4 flex items-center justify-between">
+            <div className="border border-status-critical/30 bg-status-critical/10 text-status-critical rounded p-4 flex items-center justify-between">
               <span className="text-sm font-semibold">{error}</span>
               <button onClick={() => setError(null)} className="text-xs underline">Dismiss</button>
             </div>
           )}
 
-          {activeTab === 'items' ? (
-            <div>
-              {/* Header section with add item trigger */}
-              <div className="flex items-center justify-between mb-6">
+          {/* Quick Stats Panel */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-bg-surface border border-border-subtle rounded-md p-5 flex items-center gap-4">
+              <div className="p-3 bg-accent-primary/10 rounded">
+                <ShoppingBag className="w-6 h-6 text-accent-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-text-secondary font-semibold uppercase">Items Registered</p>
+                <h3 className="text-2xl font-bold text-text-primary font-mono">{items.length}</h3>
+              </div>
+            </div>
+
+            <div className="bg-bg-surface border border-border-subtle rounded-md p-5 flex items-center gap-4">
+              <div className="p-3 bg-status-critical/10 rounded">
+                <TrendingUp className="w-6 h-6 text-status-critical" />
+              </div>
+              <div>
+                <p className="text-xs text-text-secondary font-semibold uppercase">Active Surge Escalations</p>
+                <h3 className="text-2xl font-bold text-text-primary font-mono">{activeSurges} <span className="text-xs text-text-secondary">items</span></h3>
+              </div>
+            </div>
+
+            <div className="bg-bg-surface border border-border-subtle rounded-md p-5 flex items-center gap-4">
+              <div className="p-3 bg-status-warning/10 rounded">
+                <DollarSign className="w-6 h-6 text-status-warning" />
+              </div>
+              <div>
+                <p className="text-xs text-text-secondary font-semibold uppercase">Gross Concession Checkouts</p>
+                <h3 className="text-2xl font-bold text-text-primary font-mono">{recentSales.length}</h3>
+              </div>
+            </div>
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="flex gap-4 border-b border-border-subtle">
+            <button
+              onClick={() => setActiveTab('items')}
+              className={`pb-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'items' ? 'border-accent-primary text-text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}`}
+            >
+              Concession Catalog Grid
+            </button>
+            <button
+              onClick={() => setActiveTab('sales')}
+              className={`pb-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'sales' ? 'border-accent-primary text-text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}`}
+            >
+              Transaction Log History
+            </button>
+            <button
+              onClick={() => setActiveTab('pricing-logs')}
+              className={`pb-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'pricing-logs' ? 'border-accent-primary text-text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}`}
+            >
+              Surge Adjustment Audit Trail
+            </button>
+          </div>
+
+          {/* TAB 1: Items Grid */}
+          {activeTab === 'items' && (
+            <section className="space-y-4">
+              <div className="flex justify-between items-center">
                 <div>
-                  <h2 className="text-xl font-bold text-text-primary">Concessions Inventory</h2>
-                  <p className="text-xs text-text-secondary mt-1">Real-time stock indicators and quick POS sales tools</p>
+                  <h2 className="text-lg font-bold text-text-primary">Concessions POS Catalog</h2>
+                  <p className="text-xs text-text-secondary mt-0.5">Click an item card to initiate checkouts terminal</p>
                 </div>
                 <button
                   onClick={() => setIsAddItemOpen(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-accent-primary text-white text-xs font-bold rounded-sm hover:opacity-90 transition-opacity"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-primary hover:bg-accent-primary/95 text-xs font-bold text-white rounded transition-colors"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>Register Item</span>
+                  <span>Register Concession</span>
                 </button>
               </div>
 
               {isLoading ? (
-                // Skeletons loader
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {[1, 2, 3].map(i => (
-                    <div key={i} className="bg-bg-surface border border-border-subtle rounded-md p-5 animate-pulse h-40"></div>
+                    <div key={i} className="h-44 bg-bg-surface border border-border-subtle animate-pulse rounded"></div>
                   ))}
                 </div>
               ) : items.length === 0 ? (
-                <div className="border border-dashed border-border-subtle bg-bg-surface rounded-md p-12 text-center max-w-lg mx-auto mt-8">
-                  <ShoppingBag className="w-12 h-12 text-text-secondary mx-auto mb-4" />
-                  <h3 className="text-md font-semibold text-text-primary">No Inventory Items Registered</h3>
-                  <p className="text-sm text-text-secondary mt-2 mb-6">
-                    Add concessions menu items or souvenirs to begin tracking sales in this POS terminal.
-                  </p>
-                  <button
-                    onClick={() => setIsAddItemOpen(true)}
-                    className="px-4 py-2 bg-accent-primary text-white text-xs font-bold rounded-sm hover:opacity-90 transition-opacity"
-                  >
-                    Register Your First Item
-                  </button>
+                <div className="border border-dashed border-border-subtle bg-bg-surface rounded-md p-12 text-center">
+                  <ShoppingBag className="w-10 h-10 text-text-secondary mx-auto mb-3" />
+                  <p className="text-sm text-text-secondary">No items registered in vendor catalog.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {items.map(item => {
                     const status = getStockStatus(item.stock);
+                    const isSurged = item.original_price && item.base_price > item.original_price;
+                    const surgeMultiplier = isSurged ? (item.base_price / (item.original_price || 1)).toFixed(2) : '1.00';
+
                     return (
-                      <div key={item.id} className="bg-bg-surface border border-border-subtle rounded-md p-5 flex flex-col justify-between hover:border-border-subtle/80 transition-colors">
-                        <div>
-                          <div className="flex items-start justify-between mb-3">
-                            <h3 className="font-semibold text-text-primary text-base">{item.name}</h3>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 border rounded-sm flex items-center gap-1.5 ${status.color}`}>
+                      <div 
+                        key={item.id} 
+                        onClick={() => item.stock > 0 && setSelectedItem(item)}
+                        className={`bg-bg-surface border rounded-md p-5 flex flex-col justify-between cursor-pointer transition-all hover:translate-y-[-2px] ${
+                          item.stock === 0 ? 'opacity-60 border-border-subtle/50' : 'border-border-subtle hover:border-accent-primary/60'
+                        }`}
+                      >
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-start">
+                            <h3 className="font-bold text-text-primary text-base">{item.name}</h3>
+                            <span className={`text-[9px] font-bold px-2 py-0.5 border rounded-sm flex items-center gap-1 ${status.color}`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`}></span>
                               <span>{status.label}</span>
                             </span>
                           </div>
-                          <div className="flex justify-between items-baseline mb-4">
-                            <span className="text-2xl font-bold text-text-primary">${item.base_price.toFixed(2)}</span>
-                            <span className="text-xs font-mono text-text-secondary">{item.stock} in stock</span>
+
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-2xl font-bold font-mono text-text-primary">
+                              ${item.base_price.toFixed(2)}
+                            </span>
+                            {isSurged && (
+                              <div className="flex items-center gap-0.5 text-xs text-status-critical font-bold">
+                                <TrendingUp className="w-3.5 h-3.5" />
+                                <span>{surgeMultiplier}x Surge</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="text-xs font-mono text-text-secondary flex justify-between">
+                            <span>Base: ${item.original_price ? item.original_price.toFixed(2) : item.base_price.toFixed(2)}</span>
+                            <span>Stock: {item.stock} left</span>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleSellClick(item)}
-                          className="w-full py-2 bg-bg-elevated border border-border-subtle hover:bg-accent-primary hover:text-white rounded-sm text-xs font-semibold tracking-wider text-text-primary transition-all uppercase"
-                          disabled={item.stock === 0}
-                        >
-                          {item.stock === 0 ? "Out of Stock" : "Sell"}
-                        </button>
                       </div>
                     );
                   })}
                 </div>
               )}
-            </div>
-          ) : (
-            // Sales History Panel
-            <div>
-              <div className="mb-6">
-                <h2 className="text-xl font-bold text-text-primary">Concessions Transactions</h2>
-                <p className="text-xs text-text-secondary mt-1">Live feed of POS sales logged on this terminal</p>
-              </div>
+            </section>
+          )}
 
+          {/* TAB 2: Sales transaction log */}
+          {activeTab === 'sales' && (
+            <section className="bg-bg-surface border border-border-subtle rounded-md p-6">
+              <h2 className="text-md font-bold text-text-primary mb-4">Gross POS Checkouts</h2>
               {recentSales.length === 0 ? (
-                <div className="border border-dashed border-border-subtle bg-bg-surface rounded-md p-12 text-center max-w-lg mx-auto mt-8">
-                  <ShoppingBag className="w-12 h-12 text-text-secondary mx-auto mb-4" />
-                  <h3 className="text-md font-semibold text-text-primary">No Sales Logged Yet</h3>
-                  <p className="text-sm text-text-secondary mt-2">
-                    Transactions recorded via item checkout will appear here in chronological order.
-                  </p>
-                </div>
+                <p className="text-xs text-text-secondary">No checkouts recorded today.</p>
               ) : (
-                <div className="bg-bg-surface border border-border-subtle rounded-md overflow-hidden">
-                  <table className="w-full text-left border-collapse">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs font-mono">
                     <thead>
-                      <tr className="bg-bg-elevated border-b border-border-subtle">
-                        <th className="p-4 text-xs font-bold text-text-secondary tracking-wider">Sale ID</th>
-                        <th className="p-4 text-xs font-bold text-text-secondary tracking-wider">Item ID</th>
-                        <th className="p-4 text-xs font-bold text-text-secondary tracking-wider">Quantity</th>
-                        <th className="p-4 text-xs font-bold text-text-secondary tracking-wider">Price per Unit</th>
-                        <th className="p-4 text-xs font-bold text-text-secondary tracking-wider">Timestamp</th>
+                      <tr className="border-b border-border-subtle text-text-secondary">
+                        <th className="py-2">Sale ID</th>
+                        <th>Item ID</th>
+                        <th>Quantity</th>
+                        <th>Charged Price</th>
+                        <th>Transaction Time</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border-subtle font-mono text-sm">
+                    <tbody>
                       {recentSales.map(sale => (
-                        <tr key={sale.id} className="hover:bg-bg-elevated/40 transition-colors">
-                          <td className="p-4 text-text-primary">#SALE-{sale.id}</td>
-                          <td className="p-4 text-text-secondary">#ITEM-{sale.item_id}</td>
-                          <td className="p-4 text-text-primary font-bold">{sale.quantity}</td>
-                          <td className="p-4 text-status-ok font-bold">${sale.price_at_sale.toFixed(2)}</td>
-                          <td className="p-4 text-text-secondary text-xs">{new Date(sale.timestamp).toLocaleString()}</td>
+                        <tr key={sale.id} className="border-b border-border-subtle/50 text-text-primary hover:bg-bg-elevated/20">
+                          <td className="py-2.5">#{sale.id}</td>
+                          <td>Item #{sale.item_id}</td>
+                          <td>{sale.quantity} units</td>
+                          <td className="font-bold text-status-warning">${sale.price_at_sale.toFixed(2)}</td>
+                          <td className="text-text-secondary">{new Date(sale.timestamp).toLocaleString()}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               )}
-            </div>
+            </section>
+          )}
+
+          {/* TAB 3: Pricing Audit Log */}
+          {activeTab === 'pricing-logs' && (
+            <section className="bg-bg-surface border border-border-subtle rounded-md p-6 space-y-4">
+              <div>
+                <h2 className="text-md font-bold text-text-primary">Dynamic Pricing Adjustment Audit Log</h2>
+                <p className="text-xs text-text-secondary mt-0.5">Price changes calculated and committed in past intervals</p>
+              </div>
+
+              {pricingHistory.length === 0 ? (
+                <p className="text-xs text-text-secondary">No dynamic price changes logged yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {pricingHistory.slice().reverse().map(log => {
+                    const item = items.find(i => i.id === log.item_id);
+                    const direction = log.new_price > log.old_price ? 'surged' : 'demoted';
+                    return (
+                      <div key={log.id} className="border border-border-subtle/70 bg-bg-elevated/20 p-4 rounded flex justify-between gap-4 font-mono text-xs">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-text-primary">{item ? item.name : `Item #${log.item_id}`}</span>
+                            <span className={`text-[10px] px-1.5 rounded uppercase font-semibold ${
+                              direction === 'surged' ? 'bg-status-critical/10 text-status-critical' : 'bg-status-ok/10 text-status-ok'
+                            }`}>
+                              {direction}
+                            </span>
+                          </div>
+                          <p className="text-text-secondary text-[11px]">Reason: {log.reason}</p>
+                          <p className="text-[10px] text-text-secondary/70">{new Date(log.timestamp).toLocaleString()}</p>
+                        </div>
+                        <div className="text-right flex flex-col justify-center">
+                          <span className="text-text-secondary text-[10px]">Price Shift</span>
+                          <span className="font-bold text-text-primary">
+                            ${log.old_price.toFixed(2)} $\rightarrow$ <span className={direction === 'surged' ? 'text-status-critical' : 'text-status-ok'}>${log.new_price.toFixed(2)}</span>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
           )}
         </main>
-      </div>
 
-      {/* Sell Modal / Drawer sheet */}
-      {selectedItem && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-bg-surface border border-border-subtle rounded-md max-w-md w-full p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-text-primary mb-2">POS Sale Checkout</h3>
-            <p className="text-xs text-text-secondary mb-6">Record checkout transaction details for customer.</p>
-
-            <form onSubmit={handleCheckoutSubmit} className="space-y-6">
-              <div className="flex justify-between items-center bg-bg-elevated p-3 border border-border-subtle rounded">
-                <span className="text-sm font-semibold text-text-primary">{selectedItem.name}</span>
-                <span className="text-sm font-bold text-accent-primary">${selectedItem.base_price.toFixed(2)} / unit</span>
+        {/* Right side dynamic pricing rules & forecast simulator sidebar */}
+        <aside className="w-full lg:w-96 bg-bg-surface border-t lg:border-t-0 lg:border-l border-border-subtle p-6 space-y-6">
+          
+          {/* Recalculate Cooldown info */}
+          <div className="bg-bg-elevated p-4 border border-border-subtle rounded space-y-3">
+            <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-accent-primary" />
+              <span>Surge Engine Rules</span>
+            </h4>
+            <div className="space-y-2 text-xs font-mono">
+              <div className="flex justify-between">
+                <span className="text-text-secondary">Antiflap Cooldown:</span>
+                <span className="text-text-primary font-bold">30 seconds</span>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-2">
-                  Transaction Quantity
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="number"
-                    min="1"
-                    max={selectedItem.stock}
-                    className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded-sm py-2 px-3 text-sm focus:outline-none focus:border-accent-primary transition-colors font-mono"
-                    value={quantity}
-                    onChange={(e) => setQuantity(Math.min(selectedItem.stock, Math.max(1, Number(e.target.value))))}
-                  />
-                  <span className="text-xs font-mono text-text-secondary shrink-0">
-                    Max: {selectedItem.stock} available
-                  </span>
-                </div>
+              <div className="flex justify-between">
+                <span className="text-text-secondary">Demand Horizon:</span>
+                <span className="text-text-primary">5-min velocity</span>
               </div>
-
-              <div className="border-t border-border-subtle pt-4 flex items-center justify-between">
-                <span className="text-xs font-semibold text-text-secondary">TOTAL AMOUNT DUE</span>
-                <span className="text-xl font-mono font-bold text-status-ok">
-                  ${(selectedItem.base_price * quantity).toFixed(2)}
-                </span>
+              <div className="flex justify-between">
+                <span className="text-text-secondary">Price Ceiling:</span>
+                <span className="text-status-critical font-bold">2.5x original</span>
               </div>
-
-              <div className="flex gap-4 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedItem(null)}
-                  className="flex-1 py-2 bg-bg-elevated hover:bg-bg-elevated/80 border border-border-subtle rounded-sm text-xs font-semibold text-text-primary transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2 bg-accent-primary hover:opacity-90 rounded-sm text-xs font-bold text-white transition-opacity flex items-center justify-center"
-                  disabled={isCheckoutLoading}
-                >
-                  {isCheckoutLoading ? "Completing..." : "Complete Sale"}
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
-        </div>
-      )}
 
-      {/* Add Item Modal */}
-      {isAddItemOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-bg-surface border border-border-subtle rounded-md max-w-md w-full p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-text-primary mb-2">Register Catalog Item</h3>
-            <p className="text-xs text-text-secondary mb-6">Add a concessions food or merchandise item to menu catalog.</p>
+          {/* Pricing Forecast Simulator */}
+          <div className="space-y-4 border-t border-border-subtle pt-6">
+            <div>
+              <h3 className="text-md font-bold text-text-primary flex items-center gap-1.5">
+                <BarChart2 className="w-4 h-4 text-accent-primary" />
+                <span>Pricing Forecast Simulator</span>
+              </h3>
+              <p className="text-xs text-text-secondary mt-1">Simulate future prices based on projected checkout rates</p>
+            </div>
 
-            <form onSubmit={handleAddItemSubmit} className="space-y-4">
+            <form onSubmit={handleForecastSubmit} className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-2" htmlFor="itemName">
-                  Item Description / Name
+                <label className="block text-[10px] font-semibold text-text-secondary uppercase mb-1">
+                  Target Concession
+                </label>
+                <select
+                  value={forecastItemId || ''}
+                  onChange={(e) => setForecastItemId(Number(e.target.value))}
+                  className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs focus:outline-none focus:border-accent-primary"
+                  required
+                >
+                  <option value="">-- Choose Item --</option>
+                  {items.map(it => (
+                    <option key={it.id} value={it.id}>{it.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-text-secondary uppercase mb-1">
+                  Projected sales in next 5m
                 </label>
                 <input
-                  id="itemName"
-                  type="text"
+                  type="number"
+                  min="1"
+                  value={forecastQty}
+                  onChange={(e) => setForecastQty(Math.max(1, Number(e.target.value)))}
+                  className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs font-mono focus:outline-none focus:border-accent-primary"
                   required
-                  placeholder="e.g. Classic Hot Dog, Team Cap"
-                  className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded-sm py-2 px-3 text-sm focus:outline-none focus:border-accent-primary transition-colors"
-                  value={newItemName}
-                  onChange={(e) => setNewItemName(e.target.value)}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-text-secondary mb-2" htmlFor="itemPrice">
-                    Base Unit Price ($)
-                  </label>
-                  <input
-                    id="itemPrice"
-                    type="number"
-                    step="0.01"
-                    min="0.10"
-                    required
-                    className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded-sm py-2 px-3 text-sm focus:outline-none focus:border-accent-primary transition-colors font-mono"
-                    value={newItemPrice}
-                    onChange={(e) => setNewItemPrice(Number(e.target.value))}
-                  />
+              <button
+                type="submit"
+                className="w-full py-2 bg-accent-primary text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
+                disabled={isForecasting || !forecastItemId}
+              >
+                {isForecasting ? "Computing Projections..." : "Simulate Price Forecast"}
+              </button>
+            </form>
+
+            {forecastResult && (
+              <div className="bg-bg-elevated p-4 border border-border-subtle rounded space-y-3 font-mono text-xs">
+                <div className="flex justify-between items-baseline border-b border-border-subtle/50 pb-2">
+                  <span className="text-text-secondary text-[11px]">Projected Price:</span>
+                  <span className="text-lg font-bold text-status-warning">${forecastResult.price.toFixed(2)}</span>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-text-secondary mb-2" htmlFor="itemStock">
-                    Opening Stock Count
-                  </label>
-                  <input
-                    id="itemStock"
-                    type="number"
-                    min="0"
-                    required
-                    className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded-sm py-2 px-3 text-sm focus:outline-none focus:border-accent-primary transition-colors font-mono"
-                    value={newItemStock}
-                    onChange={(e) => setNewItemStock(Number(e.target.value))}
-                  />
+                <div className="space-y-1">
+                  <span className="text-[10px] text-text-secondary uppercase block font-semibold">Confidence basis</span>
+                  <p className="text-[11px] text-text-primary leading-relaxed">{forecastResult.basis}</p>
+                </div>
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-text-secondary font-semibold">Reliability Score:</span>
+                  <span className={`font-bold px-1.5 py-0.5 rounded ${
+                    forecastResult.score >= 0.8 ? 'bg-status-ok/10 text-status-ok' : 'bg-status-warning/10 text-status-warning'
+                  }`}>
+                    {Math.round(forecastResult.score * 100)}% Confidence
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
+
+      {/* MODAL: Checkout quantity confirmation */}
+      {selectedItem && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-bg-surface border border-border-subtle max-w-sm w-full rounded p-6 space-y-6">
+            <div>
+              <h3 className="text-lg font-bold text-text-primary">Concessions Checkout</h3>
+              <p className="text-xs text-text-secondary mt-1">Record sales transaction for "{selectedItem.name}"</p>
+            </div>
+
+            <form onSubmit={handleCheckoutSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-1">
+                  Checkout Quantity
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max={selectedItem.stock}
+                  value={quantity}
+                  onChange={(e) => setQuantity(Math.min(selectedItem.stock, Math.max(1, Number(e.target.value))))}
+                  className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs font-mono focus:outline-none focus:border-accent-primary"
+                  required
+                />
+              </div>
+
+              <div className="bg-bg-elevated p-3 border border-border-subtle rounded space-y-2 text-xs font-mono">
+                <div className="flex justify-between">
+                  <span className="text-text-secondary">Current Surge Price:</span>
+                  <span className="text-text-primary font-bold">${selectedItem.base_price.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between border-t border-border-subtle/50 pt-2 font-bold">
+                  <span>Grand Total:</span>
+                  <span className="text-status-warning">${(selectedItem.base_price * quantity).toFixed(2)}</span>
                 </div>
               </div>
 
-              <div className="flex gap-4 pt-4 border-t border-border-subtle">
+              <div className="flex gap-3 justify-end text-xs font-bold pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsAddItemOpen(false)}
-                  className="flex-1 py-2 bg-bg-elevated hover:bg-bg-elevated/80 border border-border-subtle rounded-sm text-xs font-semibold text-text-primary transition-colors"
+                  onClick={() => setSelectedItem(null)}
+                  className="px-4 py-2 bg-bg-elevated border border-border-subtle hover:bg-bg-elevated/70 text-text-secondary rounded"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 bg-accent-primary hover:opacity-90 rounded-sm text-xs font-bold text-white transition-opacity"
-                  disabled={isAddLoading}
+                  className="px-4 py-2 bg-accent-primary text-white hover:opacity-95 rounded flex items-center gap-1.5"
+                  disabled={isCheckoutLoading}
                 >
-                  {isAddLoading ? "Registering..." : "Add to Catalog"}
+                  {isCheckoutLoading ? "Processing..." : "Complete Checkout"}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* MODAL: Register Concession */}
+      {isAddItemOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-bg-surface border border-border-subtle max-w-sm w-full rounded p-6 space-y-6">
+            <div>
+              <h3 className="text-lg font-bold text-text-primary">Register Concession</h3>
+              <p className="text-xs text-text-secondary mt-1">Add a new item to Priya's Concessions catalog</p>
+            </div>
+
+            <form onSubmit={handleAddItemSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-1">
+                  Concession Item Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Nacho Combo"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs focus:outline-none focus:border-accent-primary"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-1">
+                  Starting Price Floor ($)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={newItemPrice}
+                  onChange={(e) => setNewItemPrice(Math.max(0.01, Number(e.target.value)))}
+                  className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs font-mono focus:outline-none focus:border-accent-primary"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-1">
+                  Initial Inventory Stock
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={newItemStock}
+                  onChange={(e) => setNewItemStock(Math.max(0, Number(e.target.value)))}
+                  className="w-full bg-bg-elevated border border-border-subtle text-text-primary rounded py-2 px-3 text-xs font-mono focus:outline-none focus:border-accent-primary"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end text-xs font-bold pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddItemOpen(false)}
+                  className="px-4 py-2 bg-bg-elevated border border-border-subtle hover:bg-bg-elevated/70 text-text-secondary rounded"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-accent-primary text-white hover:opacity-95 rounded"
+                  disabled={isAddLoading}
+                >
+                  {isAddLoading ? "Saving Concession..." : "Register Concession"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
